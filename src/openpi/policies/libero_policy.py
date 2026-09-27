@@ -98,3 +98,10 @@ class LiberoOutputs(transforms.DataTransformFn):
         # For Libero, we only return the first 7 actions (since the rest is padding).
         # For your own dataset, replace `7` with the action dimension of your dataset.
         return {"actions": np.asarray(data["actions"][..., :7])}
+    
+    
+@dataclasses.dataclass(frozen=True)
+class FlexivOutputs(transforms.DataTransformFn):
+    def __call__(self, data: dict) -> dict:
+        # Our action and state hold 10 dims
+        return {"actions": np.asarray(data["actions"][..., :10])}

@@ -1,0 +1,28 @@
+export OPENPI_DATA_HOME=/data/yuxuan/openpi_cache   # openpi 缓存（权重/tokenizer/norm stats）
+export HF_LEROBOT_HOME=/data/yuxuan/lerobot_home    # lerobot 数据集根目录
+
+python scripts/compute_norm_stats.py --config-name pi0_realdata_lora
+
+export CUDA_VISIBLE_DEVICES=4,5,6,7  # 只用部分物理卡
+export XLA_PYTHON_CLIENT_MEM_FRACTION=0.9           # 让 JAX 用更多显存
+
+uv run scripts/train.py pi0_realdata_lora --exp-name=my_exp --overwrite
+
+
+
+
+# convert the dataset ：
+conda activate act
+cd /home/yuxuan/copy_openpi
+export OPENPI_DATA_HOME=/data/yuxuan/openpi_cache HF_LEROBOT_HOME=/data/yuxuan/lerobot_home
+export PYTHONPATH=/home/yuxuan/dependencies/pytorch3d:$PYTHONPATH
+python examples/custom_data_to_lerobot.py 
+
+# calculate stats
+python scripts/compute_norm_stats.py --config-name pi0_realdata_lora
+
+
+# run the eval process on the client side:
+
+export PYTHONPATH=/home/yuxuan/copy_openpi
+python /home/yuxuan/copy_openpi/examples/our_real/main.py

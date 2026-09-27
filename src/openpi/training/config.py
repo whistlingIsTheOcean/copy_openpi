@@ -461,7 +461,42 @@ class LeRobotDROIDDataConfig(DataConfigFactory):
             model_transforms=model_transforms,
         )
 
+@dataclasses.dataclass(frozen=True)
+class LeRobotFlexivDataConfig(DataConfigFactory):
+    extra_delta_transform: bool = True
 
+    @override
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        repack_transform = _transforms.Group(
+                    inputs=[
+                        _transforms.RepackTransform(
+                            {
+                                "observation/image": "image",
+                                "observation/wrist_image": "wrist_image",
+                                "observation/state": "state",
+                                "actions": "actions",
+                                "prompt": "prompt",
+                            }
+                        )
+                    ]
+                )   
+        data_transforms = _transforms.Group(
+                    inputs=[libero_policy.LiberoInputs(model_type=model_config.model_type)],
+                    outputs=[libero_policy.FlexivOutputs()],
+                )
+        if self.extra_delta_transform:
+            delta_action_mask = _transforms.make_bool_mask(9, -1)
+            data_transforms = data_transforms.push(
+                inputs=[_transforms.DeltaActions(delta_action_mask)],
+                outputs=[_transforms.AbsoluteActions(delta_action_mask)],
+            )
+        model_transforms = ModelTransformFactory()(model_config)
+        return dataclasses.replace(
+                    self.create_base_config(assets_dirs, model_config),
+                    repack_transforms=repack_transform,
+                    data_transforms=data_transforms,
+                    model_transforms=model_transforms,
+                )
 @dataclasses.dataclass(frozen=True)
 class TrainConfig:
     # Name of the config. Must be unique. Will be used to reference this config.
@@ -736,6 +771,28 @@ _CONFIGS = [
         # that specifies which parameters should be frozen during LoRA finetuning.
         freeze_filter=pi0_fast.Pi0FASTConfig(
             action_dim=7, action_horizon=10, max_token_len=180, paligemma_variant="gemma_2b_lora"
+        ).get_freeze_filter(),
+        # Turn off EMA for LoRA finetuning.
+        ema_decay=None,
+    ),
+    TrainConfig(
+        name="pi0_realdata_lora",
+        # Tcp-space LoRA finetuning on the custom dataset.
+        # The converted LeRobot dataset stores ABSOLUTE tcp and rotate 6d actions (xyz + rotate_6d + gripper width = 10 dims)
+        # under keys image / wrist_image / state / actions / task -- same keys as the Libero datasets,
+        # extra_delta_transform=True converts the absolute tcp rotate6d
+        # actions to delta (first 9 dims) while keeping the gripper absolute, matching pi0 pre-training.
+        model=pi0_config.Pi0Config(paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"),
+        data=LeRobotFlexivDataConfig(
+            repo_id="real_data_0710_0921trans/libero",
+            base_config=DataConfig(prompt_from_task=True),
+            extra_delta_transform=True,
+        ),
+        batch_size=32,
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_base/params"),
+        num_train_steps=30_000,
+        freeze_filter=pi0_config.Pi0Config(
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
         ).get_freeze_filter(),
         # Turn off EMA for LoRA finetuning.
         ema_decay=None,
