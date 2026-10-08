@@ -24,9 +24,6 @@ class Args:
     
     max_hz: float = 7.0
 
-    # False = dry-run：读真实观测、连服务端、打印动作，但一个字节都不发给机器人
-    send_actions: bool = True
-
 
 def main(args: Args) -> None:
     ws_client_policy = _websocket_client_policy.WebsocketClientPolicy(
@@ -37,10 +34,7 @@ def main(args: Args) -> None:
     logging.info(f"Connecting to ws://{args.host}:{args.port}, max_hz={args.max_hz}")
 
     runtime = _runtime.Runtime(
-        environment=_env.FlexivRealEnvironment(
-            discretize_rotation=False,
-            send_actions=args.send_actions,
-        ),
+        environment=_env.FlexivRealEnvironment(discretize_rotation=False),
         agent=_policy_agent.PolicyAgent(
             policy=action_chunk_broker.ActionChunkBroker(
                 policy=ws_client_policy,
